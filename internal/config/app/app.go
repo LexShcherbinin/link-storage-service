@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"link-storage-service/internal/cache"
 	"link-storage-service/internal/handler"
 	"link-storage-service/internal/middleware"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/golang-migrate/migrate/v4"
 )
 
 type App struct {
@@ -25,11 +27,22 @@ type App struct {
 }
 
 func NewApp() *App {
+	dbURL := os.Getenv("DB_URL")
+
+	if dbURL == "" {
+		log.Fatal("DB_URL is required")
+	}
+
+	fmt.Println(dbURL)
+
+	runMigrations(dbURL)
 	db := initDB()
 
 	repo := repository.NewPostgresLinkRepository(db)
 
-	cache := cache.NewRedisCache("localhost:6379")
+	redisAddr := os.Getenv("REDIS_ADDR")
+	fmt.Println(redisAddr)
+	cache := cache.NewRedisCache(redisAddr)
 
 	service := service.NewLinkService(repo, cache)
 
@@ -86,9 +99,6 @@ func (a *App) Run() error {
 
 func initDB() *sql.DB {
 	dbURL := os.Getenv("DB_URL")
-	if dbURL == "" {
-		dbURL = "postgres://postgres:postgres@localhost:11432/links?sslmode=disable"
-	}
 
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
@@ -100,4 +110,20 @@ func initDB() *sql.DB {
 	}
 
 	return db
+}
+
+func runMigrations(dbUrl string) {
+	m, err := migrate.New(
+		"file://migrations",
+		dbUrl,
+	)
+	if err != nil {
+		log.Fatalf("migration init error: %v", err)
+	}
+
+	if err := m.Up(); err != nil && err.Error() != "no change" {
+		log.Fatalf("migration up error: %v", err)
+	}
+
+	log.Println("migrations applied")
 }

@@ -5,8 +5,6 @@ import (
 	"link-storage-service/internal/cache"
 	"link-storage-service/internal/model"
 	"link-storage-service/internal/repository"
-	"math/rand"
-	"time"
 )
 
 type LinkService interface {
@@ -56,41 +54,29 @@ func (s *linkService) Create(url string) (string, error) {
 	return shortCode, nil
 }
 
-const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-
-func generateShortCode() string {
-	rand.Seed(time.Now().UnixNano())
-
-	b := make([]byte, 6)
-	for i := range b {
-		b[i] = charset[rand.Intn(len(charset))]
-	}
-
-	return string(b)
-}
-
 func (s *linkService) Get(code string) (*model.Link, error) {
-	url, err := s.cache.Get(code)
-	if err != nil {
+	// 1. всегда увеличиваем visits
+	if err := s.repo.IncrementVisits(code); err != nil {
 		return nil, err
 	}
 
-	if url != "" {
-		_ = s.repo.IncrementVisits(code)
-
+	// 2. пробуем взять из кэша
+	if url, err := s.cache.Get(code); err == nil && url != "" {
 		return &model.Link{
 			ShortCode:   code,
 			OriginalURL: url,
+			// Visits не возвращаем — он неактуален из кэша
 		}, nil
 	}
 
+	// 3. если нет в кэше — идём в БД
 	link, err := s.repo.GetByShortCode(code)
 	if err != nil {
 		return nil, err
 	}
 
+	// 4. кладём в кэш
 	_ = s.cache.Set(code, link.OriginalURL)
-	_ = s.repo.IncrementVisits(code)
 
 	return link, nil
 }
