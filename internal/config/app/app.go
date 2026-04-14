@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	"database/sql"
-	"fmt"
+	"errors"
 	"link-storage-service/internal/cache"
 	"link-storage-service/internal/handler"
 	"link-storage-service/internal/middleware"
@@ -27,38 +27,29 @@ type App struct {
 }
 
 func NewApp() *App {
-	dbURL := os.Getenv("DB_URL")
+	dbUrl := os.Getenv("DB_URL")
+	redisAddr := os.Getenv("REDIS_ADDR")
 
-	if dbURL == "" {
-		log.Fatal("DB_URL is required")
-	}
+	validateVariables(dbUrl, redisAddr)
 
-	fmt.Println(dbURL)
-
-	runMigrations(dbURL)
-	db := initDB()
+	runMigrations(dbUrl)
+	db := initDB(dbUrl)
 
 	repo := repository.NewPostgresLinkRepository(db)
-
-	redisAddr := os.Getenv("REDIS_ADDR")
-	fmt.Println(redisAddr)
-	cache := cache.NewRedisCache(redisAddr)
-
-	service := service.NewLinkService(repo, cache)
-
-	handler := handler.NewLinkHandler(service)
-
+	linkCache := cache.NewRedisCache(redisAddr)
+	linkService := service.NewLinkService(repo, linkCache)
+	linkHandler := handler.NewLinkHandler(linkService)
 	router := chi.NewRouter()
 
 	router.Use(middleware.RequestID)
 	router.Use(middleware.Logging)
 	router.Use(middleware.Recovery)
 
-	router.Post("/links", handler.Create)
-	router.Get("/links/{code}", handler.Get)
-	router.Delete("/links/{code}", handler.Delete)
-	router.Get("/links", handler.GetAll)
-	router.Get("/links/{code}/stats", handler.Stats)
+	router.Post("/links", linkHandler.CreateLink)
+	router.Get("/links/{code}", linkHandler.GetByShortCode)
+	router.Delete("/links/{code}", linkHandler.DeleteLinks)
+	router.Get("/links", linkHandler.GetAllLinks)
+	router.Get("/links/{code}/stats", linkHandler.GetStats)
 
 	return &App{
 		server: &http.Server{
@@ -71,7 +62,7 @@ func NewApp() *App {
 func (a *App) Run() error {
 	go func() {
 		log.Println("server started on :8080")
-		if err := a.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := a.server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("server error: %v", err)
 		}
 	}()
@@ -97,10 +88,18 @@ func (a *App) Run() error {
 	return nil
 }
 
-func initDB() *sql.DB {
-	dbURL := os.Getenv("DB_URL")
+func validateVariables(url string, addr string) {
+	if url == "" {
+		log.Fatal("DB_URL is required")
+	}
 
-	db, err := sql.Open("postgres", dbURL)
+	if addr == "" {
+		log.Fatal("REDIS_ADDR is required")
+	}
+}
+
+func initDB(dbUrl string) *sql.DB {
+	db, err := sql.Open("postgres", dbUrl)
 	if err != nil {
 		log.Fatalf("failed to open db: %v", err)
 	}

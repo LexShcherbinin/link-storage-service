@@ -21,7 +21,7 @@ type createRequest struct {
 	URL string `json:"url"`
 }
 
-func (h *LinkHandler) Create(w http.ResponseWriter, r *http.Request) {
+func (h *LinkHandler) CreateLink(w http.ResponseWriter, r *http.Request) {
 	var req createRequest
 
 	err := json.NewDecoder(r.Body).Decode(&req)
@@ -41,7 +41,7 @@ func (h *LinkHandler) Create(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *LinkHandler) Get(w http.ResponseWriter, r *http.Request) {
+func (h *LinkHandler) GetByShortCode(w http.ResponseWriter, r *http.Request) {
 	code := chi.URLParam(r, "code")
 
 	link, err := h.service.Get(code)
@@ -56,7 +56,7 @@ func (h *LinkHandler) Get(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (h *LinkHandler) GetAll(w http.ResponseWriter, r *http.Request) {
+func (h *LinkHandler) GetAllLinks(w http.ResponseWriter, r *http.Request) {
 	limitStr := r.URL.Query().Get("limit")
 	offsetStr := r.URL.Query().Get("offset")
 
@@ -72,7 +72,7 @@ func (h *LinkHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(links)
 }
 
-func (h *LinkHandler) Delete(w http.ResponseWriter, r *http.Request) {
+func (h *LinkHandler) DeleteLinks(w http.ResponseWriter, r *http.Request) {
 	code := chi.URLParam(r, "code")
 
 	err := h.service.Delete(code)
@@ -84,7 +84,7 @@ func (h *LinkHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (h *LinkHandler) Stats(w http.ResponseWriter, r *http.Request) {
+func (h *LinkHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 	code := chi.URLParam(r, "code")
 
 	link, err := h.service.GetStats(code)
