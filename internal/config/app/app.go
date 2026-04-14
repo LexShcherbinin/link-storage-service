@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"link-storage-service/internal/cache"
 	"link-storage-service/internal/handler"
+	"link-storage-service/internal/middleware"
 	"link-storage-service/internal/repository"
 	"link-storage-service/internal/service"
 	"log"
@@ -35,6 +36,10 @@ func NewApp() *App {
 	handler := handler.NewLinkHandler(service)
 
 	router := chi.NewRouter()
+
+	router.Use(middleware.RequestID)
+	router.Use(middleware.Logging)
+	router.Use(middleware.Recovery)
 
 	router.Post("/links", handler.Create)
 	router.Get("/links/{code}", handler.Get)
