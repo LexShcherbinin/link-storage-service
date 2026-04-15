@@ -1,188 +1,297 @@
 # 🔗 Link Storage Service
 
-Сервис для сокращения ссылок с возможностью хранения и получения оригинального URL, а также сбора статистики переходов.
+Сервис управления ссылками. Позволяет сохранять ссылки, получать их по короткому идентификатору и вести статистику обращений.
 
 ---
 
-## 🚀 Функциональность
+# 🚀 Функциональность
 
-* Создание короткой ссылки
-* Получение оригинального URL по short_code
-* Подсчёт количества переходов
-* Получение списка ссылок с пагинацией
-* Удаление ссылок
-* Просмотр статистики
+* Создание короткой ссылки (short URL)
+* Получение оригинальной ссылки по shortCode
+* Подсчёт количества переходов (visits)
+* Кэширование через Redis
+* Миграции базы данных
+* Graceful shutdown
+* Docker-окружение
 
 ---
 
-## 🛠️ Технологии
+# 🧱 Архитектура
 
-* Go (Golang)
+Проект построен по layered architecture:
+
+```
+handler → service → repository → database
+                 ↘ cache (Redis)
+```
+
+### Слои:
+
+* **handler** — HTTP-слой (обработка запросов)
+* **service** — бизнес-логика
+* **repository** — работа с PostgreSQL
+* **cache** — Redis для ускорения чтения
+
+---
+
+# 🛠️ Технологии
+
+* Go
 * PostgreSQL
-* golang-migrate (миграции)
-* Docker (для БД)
+* Redis
+* Docker / docker-compose
+* golang-migrate
 
 ---
 
-## 📁 Структура проекта
+# 📦 Структура проекта
 
 ```
 .
-├── cmd/app              # Точка входа (main.go)
+├── cmd/app                # точка входа
 ├── internal/
-│   ├── handler/         # HTTP handlers
-│   ├── service/         # Бизнес-логика
-│   ├── repository/      # Работа с БД
-│   ├── model/           # Модели
-│   ├── cache/           # Кеш
-│   └── config/          # Конфигурация
-├── migrations/          # SQL миграции
-├── go.mod
+│   ├── handler           # HTTP handlers
+│   ├── service           # бизнес-логика
+│   ├── repository        # работа с БД
+│   ├── cache             # Redis
+│   ├── model             # модели
+│   └── middleware        # middleware
+├── migrations            # SQL миграции
+├── Dockerfile
+├── docker-compose.yml
 └── README.md
 ```
 
 ---
 
-## ⚙️ Запуск проекта
+# ⚙️ Запуск проекта
 
-### 1. Запуск PostgreSQL через Docker
+## 🐳 Через Docker (рекомендуется)
 
 ```bash
-docker run --name link-db \
-  -e POSTGRES_USER=postgres \
-  -e POSTGRES_PASSWORD=postgres \
-  -e POSTGRES_DB=links \
-  -p 5432:5432 \
-  -d postgres
+docker-compose up --build
+```
+
+После запуска:
+
+* API: http://localhost:8080
+* PostgreSQL: localhost:5432
+* Redis: localhost:6379
+
+---
+
+## 🛑 Остановка
+
+```bash
+Ctrl + C
+```
+
+или
+
+```bash
+docker-compose down
 ```
 
 ---
 
-### 2. Установка migrate
+# 🔄 Миграции
 
-#### macOS
+Миграции применяются автоматически при старте приложения.
 
-```bash
-brew install golang-migrate
+Файлы находятся в:
+
 ```
-
-#### Linux (пример)
-
-```bash
-curl -L https://github.com/golang-migrate/migrate/releases/latest/download/migrate.linux-amd64.tar.gz | tar xvz
-sudo mv migrate /usr/local/bin/
+migrations/
+  000001_create_links_table.up.sql
+  000001_create_links_table.down.sql
 ```
 
 ---
 
-### 3. Применение миграций
+# 📡 API
 
-```bash
-migrate -path ./migrations \
-  -database "postgres://postgres:postgres@localhost:5432/links?sslmode=disable" \
-  up
+## ➕ Создать короткую ссылку
+
+```
+POST /links
 ```
 
----
-
-### 4. Настройка переменных окружения
-
-```bash
-export DB_URL=postgres://postgres:postgres@localhost:5432/links?sslmode=disable
-export PORT=8080
-```
-
----
-
-### 5. Запуск сервиса
-
-```bash
-go run cmd/app/main.go
-```
-
----
-
-## 📡 API
-
----
-
-### ➕ Создание короткой ссылки
-
-**POST /links**
-
-#### Request
+### Request:
 
 ```json
 {
-  "url": "https://example.com/some/very/long/url"
+  "url": "https://example.com"
 }
 ```
 
-#### Response
+### Response:
+
+```json
+"b"
+```
+
+### Описание:
+
+* Принимает оригинальный URL
+* Создаёт запись в БД
+* Генерирует shortCode (base62)
+* Возвращает короткий код
+
+---
+
+## 📋 Получить список ссылок
+
+```
+GET /links
+```
+
+### Response:
+
+```json
+[
+  {
+    "short_code": "b",
+    "original_url": "https://example.com",
+    "visits": 3
+  }
+]
+```
+
+### Описание:
+
+* Возвращает список всех сохранённых ссылок
+* Используется для просмотра данных в системе
+
+---
+
+## 🔍 Получить оригинальный URL
+
+```
+GET /links/{code}
+```
+
+### Response:
 
 ```json
 {
-  "short_code": "abc123"
+  "short_code": "b",
+  "original_url": "https://example.com",
+  "visits": 3
 }
 ```
 
+### Описание:
+
+* Принимает shortCode
+* Сначала проверяет Redis (кэш)
+* Если нет — идёт в PostgreSQL
+* Увеличивает счётчик visits
+* Возвращает данные ссылки
+
 ---
 
-### 🔍 Получение оригинальной ссылки
+## 📊 Получить статистику ссылки
 
-**GET /links/{short_code}**
-
-#### Response
-
-```json
-{
-  "url": "https://example.com",
-  "visits": 10
-}
+```
+GET /links/{short_code}/stats
 ```
 
----
-
-### 📄 Получение списка ссылок
-
-**GET /links?limit=10&offset=0**
-
----
-
-### ❌ Удаление ссылки
-
-**DELETE /links/{short_code}**
-
----
-
-### 📊 Статистика
-
-**GET /links/{short_code}/stats**
-
-#### Response
+### Response:
 
 ```json
 {
-  "short_code": "abc123",
-  "url": "https://example.com",
-  "visits": 10,
+  "short_code": "b",
+  "visits": 3,
   "created_at": "2026-01-01T12:00:00Z"
 }
 ```
 
----
+### Описание:
 
-## ⚡ Особенности реализации
-
-* Генерация уникального `short_code`
-* Потокобезопасное увеличение счётчика переходов
-* Кеширование часто запрашиваемых ссылок
-* Чистая архитектура (handler → service → repository)
-* Конфигурация через переменные окружения
+* Возвращает статистику по ссылке
+* Не использует кэш (берёт актуальные данные из БД)
+* Показывает количество переходов и дату создания
 
 ---
 
-## 🧪 Пример использования (curl)
+## ❌ Удалить ссылку
+
+```
+DELETE /links/{code}
+```
+
+### Response:
+
+```
+204 No Content
+```
+
+### Описание:
+
+* Удаляет ссылку из базы данных
+* Удаляет запись из Redis-кэша
+* Используется для очистки данных
+
+---
+
+# 🧠 Как работает генерация shortCode
+
+* используется auto-increment ID из PostgreSQL
+* кодируется в base62
+* гарантирует уникальность без дополнительных проверок
+
+---
+
+# ⚡ Кэширование
+
+* Redis хранит: `short_code → original_url`
+* уменьшает нагрузку на БД
+* БД остаётся источником истины
+
+---
+
+# 📈 Подсчёт переходов
+
+* увеличивается при каждом запросе ссылки
+* выполняется атомарно в PostgreSQL:
+
+```sql
+UPDATE links SET visits = visits + 1
+```
+
+---
+
+# 🐳 Docker
+
+Сервис запускается в 3 контейнерах:
+
+* app
+* postgres
+* redis
+
+Контейнеры взаимодействуют через внутреннюю сеть Docker:
+
+```
+app → postgres:5432
+app → redis:6379
+```
+
+---
+
+# 🔐 Конфигурация
+
+Через environment variables:
+
+```
+DB_URL=postgres://postgres:postgres@postgres:5432/links?sslmode=disable
+REDIS_ADDR=redis:6379
+```
+
+---
+
+# 🧪 Проверка
+
+Создать ссылку:
 
 ```bash
 curl -X POST http://localhost:8080/links \
@@ -190,17 +299,10 @@ curl -X POST http://localhost:8080/links \
   -d '{"url":"https://example.com"}'
 ```
 
----
+Получить ссылку:
 
-## 📌 TODO (дополнительно)
-
-* Добавить Redis для кеша
-* Логи (zap/logrus)
-* Graceful shutdown
-* Docker Compose для полного окружения
+```bash
+curl http://localhost:8080/links/{code}
+```
 
 ---
-
-## 👨‍💻 Автор
-
-Тестовое задание
