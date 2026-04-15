@@ -24,19 +24,18 @@ type createRequest struct {
 func (h *LinkHandler) CreateLink(w http.ResponseWriter, r *http.Request) {
 	var req createRequest
 
-	err := json.NewDecoder(r.Body).Decode(&req)
-	if err != nil || req.URL == "" {
-		http.Error(w, "invalid request", http.StatusBadRequest)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.URL == "" {
+		writeError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 
 	code, err := h.service.Create(req.URL)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]string{
+	writeJSON(w, http.StatusOK, map[string]string{
 		"short_code": code,
 	})
 }
@@ -46,38 +45,34 @@ func (h *LinkHandler) GetByShortCode(w http.ResponseWriter, r *http.Request) {
 
 	link, err := h.service.Get(code)
 	if err != nil {
-		http.Error(w, "not found", http.StatusNotFound)
+		writeError(w, http.StatusNotFound, "not found")
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"url":    link.OriginalURL,
 		"visits": link.Visits,
 	})
 }
 
 func (h *LinkHandler) GetAllLinks(w http.ResponseWriter, r *http.Request) {
-	limitStr := r.URL.Query().Get("limit")
-	offsetStr := r.URL.Query().Get("offset")
-
-	limit, _ := strconv.Atoi(limitStr)
-	offset, _ := strconv.Atoi(offsetStr)
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
 
 	links, err := h.service.GetAll(limit, offset)
 	if err != nil {
-		http.Error(w, "error", http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, "error")
 		return
 	}
 
-	json.NewEncoder(w).Encode(links)
+	writeJSON(w, http.StatusOK, links)
 }
 
 func (h *LinkHandler) DeleteLinks(w http.ResponseWriter, r *http.Request) {
 	code := chi.URLParam(r, "code")
 
-	err := h.service.Delete(code)
-	if err != nil {
-		http.Error(w, "not found", http.StatusNotFound)
+	if err := h.service.Delete(code); err != nil {
+		writeError(w, http.StatusNotFound, "not found")
 		return
 	}
 
@@ -89,11 +84,11 @@ func (h *LinkHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 
 	link, err := h.service.GetStats(code)
 	if err != nil {
-		http.Error(w, "not found", http.StatusNotFound)
+		writeError(w, http.StatusNotFound, "not found")
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"short_code": link.ShortCode,
 		"url":        link.OriginalURL,
 		"visits":     link.Visits,
