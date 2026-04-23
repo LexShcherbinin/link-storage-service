@@ -61,7 +61,7 @@ func (s *linkService) Get(code string) (*model.Link, error) {
 		return &model.Link{
 			ShortCode:   code,
 			OriginalURL: url,
-			Visits:      999,
+			Visits:      visits,
 		}, nil
 	}
 
