@@ -91,14 +91,19 @@ func (r *PostgresLinkRepository) Delete(code string) error {
 	return err
 }
 
-func (r *PostgresLinkRepository) IncrementVisits(code string) error {
+func (r *PostgresLinkRepository) IncrementVisits(code string) (int64, error) {
 	query := `
     UPDATE links
     SET visits = visits + 1
-    WHERE short_code = $1`
+    WHERE short_code = $1
+    RETURNING visits`
 
-	_, err := r.db.Exec(query, code)
-	return err
+	var visits int64
+	err := r.db.QueryRow(query, code).Scan(&visits)
+	if err != nil {
+		return 0, err
+	}
+	return visits, nil
 }
 
 func (r *PostgresLinkRepository) UpdateShortCode(id int64, code string) error {

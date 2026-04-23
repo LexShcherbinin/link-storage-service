@@ -52,7 +52,8 @@ func (s *linkService) Create(url string) (string, error) {
 }
 
 func (s *linkService) Get(code string) (*model.Link, error) {
-	if err := s.repo.IncrementVisits(code); err != nil {
+	visits, err := s.repo.IncrementVisits(code)
+	if err != nil {
 		return nil, err
 	}
 
@@ -60,6 +61,7 @@ func (s *linkService) Get(code string) (*model.Link, error) {
 		return &model.Link{
 			ShortCode:   code,
 			OriginalURL: url,
+			Visits:      999,
 		}, nil
 	}
 
@@ -67,6 +69,8 @@ func (s *linkService) Get(code string) (*model.Link, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	link.Visits = visits
 
 	_ = s.cache.Set(code, link.OriginalURL)
 
