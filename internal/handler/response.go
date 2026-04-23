@@ -10,7 +10,7 @@ func writeJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.WriteHeader(status)
 
 	encoder := json.NewEncoder(w)
-	encoder.SetIndent("", "  ") // 🔥 красивый JSON
+	encoder.SetIndent("", "  ")
 
 	_ = encoder.Encode(data)
 }
