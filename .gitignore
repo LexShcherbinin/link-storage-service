@@ -1,0 +1,19 @@
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+
+# Go build
+/bin/
+/app
+
+# Logs
+*.log
+
+# Env
+.env
+
+# Temporary files
+tmp/
