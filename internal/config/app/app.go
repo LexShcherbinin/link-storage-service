@@ -3,20 +3,14 @@ package app
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"link-storage-service/internal/cache"
 	"link-storage-service/internal/handler"
-	"link-storage-service/internal/middleware"
 	"link-storage-service/internal/repository"
 	"link-storage-service/internal/service"
 	"log"
 	"net/http"
 	"os"
-	"os/signal"
-	"syscall"
-	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/golang-migrate/migrate/v4"
 )
 
@@ -39,52 +33,37 @@ func NewApp() *App {
 	linkCache := cache.NewRedisCache(redisAddr)
 	linkService := service.NewLinkService(repo, linkCache)
 	linkHandler := handler.NewLinkHandler(linkService)
-	router := chi.NewRouter()
-
-	router.Use(middleware.RequestID)
-	router.Use(middleware.Logging)
-	router.Use(middleware.Recovery)
-
-	router.Post("/links", linkHandler.CreateLink)
-	router.Get("/links/{code}", linkHandler.GetByShortCode)
-	router.Delete("/links/{code}", linkHandler.DeleteLinks)
-	router.Get("/links", linkHandler.GetAllLinks)
-	router.Get("/links/{code}/stats", linkHandler.GetStats)
+	router := handler.NewRouter(linkHandler)
 
 	return &App{
 		server: &http.Server{
 			Addr:    ":8080",
 			Handler: router,
 		},
+		db:    db,
+		cache: linkCache,
 	}
 }
 
-func (a *App) Run() error {
-	go func() {
-		log.Println("server started on :8080")
-		if err := a.server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Fatalf("server error: %v", err)
-		}
-	}()
+func (a *App) Start() error {
+	return a.server.ListenAndServe()
+}
 
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-
-	<-stop
-	log.Println("shutting down server...")
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
+func (a *App) Shutdown(ctx context.Context) error {
 	if err := a.server.Shutdown(ctx); err != nil {
 		return err
 	}
 
-	if a.db != nil {
-		_ = a.db.Close()
+	if err := a.db.Close(); err != nil {
+		log.Println("error closing db:", err)
 	}
 
-	log.Println("server stopped gracefully")
+	if rc, ok := a.cache.(interface{ Close() error }); ok {
+		if err := rc.Close(); err != nil {
+			log.Println("error closing cache:", err)
+		}
+	}
+
 	return nil
 }
 

@@ -37,3 +37,7 @@ func (r *RedisCache) Set(code string, url string) error {
 func (r *RedisCache) Delete(code string) error {
 	return r.client.Del(r.ctx, code).Err()
 }
+
+func (r *RedisCache) Close() error {
+	return r.client.Close()
+}
